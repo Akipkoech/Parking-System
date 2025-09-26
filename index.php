@@ -14,12 +14,17 @@ if (isset($_POST['login'])) {
         $stmt->execute([$email]);
         $user = $stmt->fetch();
         
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['name'] = $user['name'];
-            $_SESSION['role'] = $user['role'];
-            header("Location: " . ($user['role'] == 'admin' ? 'admin_dashboard.php' : 'dashboard.php'));
-            exit();
+        // Explicitly check if user was found
+        if ($user !== false) {
+            if (password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['name'] = $user['name'];
+                $_SESSION['role'] = $user['role'];
+                header("Location: " . ($user['role'] == 'admin' ? 'admin_dashboard.php' : 'dashboard.php'));
+                exit();
+            } else {
+                $error = "Invalid email or password";
+            }
         } else {
             $error = "Invalid email or password";
         }

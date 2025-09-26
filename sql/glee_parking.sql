@@ -57,11 +57,6 @@ CREATE TABLE notifications (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Insert sample data for testing
-INSERT INTO users (name, email, password, phone_number, role) VALUES 
-('Admin User', 'admin@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', '0712345678', 'admin'),
-('Test Client', 'client@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', '0722333444', 'client');
-
 INSERT INTO slots (slot_number, proximity, status) VALUES 
 ('A1', 'near_entrance', 'available'),
 ('A2', 'standard', 'available'),

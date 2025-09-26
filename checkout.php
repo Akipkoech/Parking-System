@@ -107,6 +107,25 @@ try {
             // --- M-Pesa STK Push ---
             $timestamp = date('YmdHis');
             $password = base64_encode($shortCode . $passkey . $timestamp);
+            // Helper function to get M-Pesa access token
+            function getAccessToken($consumerKey, $consumerSecret) {
+                $credentials = base64_encode($consumerKey . ':' . $consumerSecret);
+                $url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'Authorization: Basic ' . $credentials
+                ]);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                $response = curl_exec($ch);
+                curl_close($ch);
+                $result = json_decode($response);
+                if (isset($result->access_token)) {
+                    return $result->access_token;
+                } else {
+                    throw new Exception('Failed to obtain M-Pesa access token.');
+                }
+            }
+
             $token = getAccessToken($consumerKey, $consumerSecret);
 
             $stk_url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';

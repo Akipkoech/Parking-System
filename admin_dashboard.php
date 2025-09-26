@@ -58,8 +58,8 @@ if (isset($_POST['approve_booking']) || isset($_POST['reject_booking'])) {
 
 // Handle slot management (add/delete)
 if (isset($_POST['add_slot'])) {
-    $slot_number = filter_var($_POST['slot_number'], FILTER_SANITIZE_STRING);
-    $proximity = filter_var($_POST['proximity'], FILTER_SANITIZE_STRING);
+    $slot_number = filter_var($_POST['slot_number'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+    $proximity = filter_var($_POST['proximity'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
     
     try {
         $stmt = $conn->prepare("SELECT COUNT(*) FROM slots WHERE slot_number = ?");
@@ -91,9 +91,9 @@ if (isset($_POST['delete_slot'])) {
 // Handle user update
 if (isset($_POST['update_user'])) {
     $user_id_to_update = filter_var($_POST['user_id'], FILTER_SANITIZE_NUMBER_INT);
-    $name = filter_var($_POST['name'], FILTER_SANITIZE_STRING);
+    $name = filter_var($_POST['name'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
     $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
-    $role = filter_var($_POST['role'], FILTER_SANITIZE_STRING);
+    $role = filter_var($_POST['role'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
     
     try {
         if ($user_id_to_update != $user_id) { // Prevent self-edit

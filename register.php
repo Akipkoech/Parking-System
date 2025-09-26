@@ -6,12 +6,12 @@ require_once 'includes/config.php';
 
 // Handle registration
 if (isset($_POST['register'])) {
-    $name = filter_var($_POST['name'], FILTER_SANITIZE_STRING);
+    $name = filter_var($_POST['name'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
     $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
-    $phone_number = filter_var($_POST['phone_number'], FILTER_SANITIZE_STRING);
-    
+    $phone_number = filter_var($_POST['phone_number'], FILTER_SANITIZE_FULL_SPECIAL_CHARS);
+
     // Server-side validation
     if (empty($name) || empty($email) || empty($password) || empty($confirm_password) || empty($phone_number)) {
         $error = "All fields are required";
@@ -36,7 +36,6 @@ if (isset($_POST['register'])) {
                 $stmt = $conn->prepare("INSERT INTO users (name, email, password, role, phone_number) VALUES (?, ?, ?, 'client', ?)");
                 $stmt->execute([$name, $email, $hashed_password, $phone_number]);
                 $success = "Registration successful. Redirecting to login...";
-                // JavaScript for delayed redirect
                 echo "<script>setTimeout(() => { window.location.href = 'index.php'; }, 3000);</script>";
             }
         } catch (PDOException $e) {
@@ -54,19 +53,39 @@ if (isset($_POST['register'])) {
     <title>Glee Hotel Parking - Register</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/styles.css">
-    <script src="assets/js/scripts.js" defer></script>
+    <script>
+    function validateRegisterForm() {
+        const phone = document.getElementById('phone_number').value.trim();
+        const phonePattern = /^0[17][0-9]{8}$|^254[17][0-9]{8}$/;
+        if (!phonePattern.test(phone)) {
+            alert('Invalid phone number format (e.g., 0712345678 or 254712345678)');
+            return false;
+        }
+        const password = document.getElementById('password').value;
+        const confirm = document.getElementById('confirm_password').value;
+        if (password.length < 6) {
+            alert('Password must be at least 6 characters');
+            return false;
+        }
+        if (password !== confirm) {
+            alert('Passwords do not match');
+            return false;
+        }
+        return true;
+    }
+    </script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="max-w-md w-full bg-white p-8 rounded-lg shadow-lg">
         <h1 class="text-2xl font-bold text-center mb-6">Glee Hotel Parking System</h1>
         <h2 class="text-xl font-semibold mb-4">Register</h2>
         <?php if (isset($error)): ?>
-            <div class="alert alert-error mb-4">
+            <div class="mb-4 p-3 rounded bg-red-100 text-red-700 border border-red-300">
                 <?php echo htmlspecialchars($error); ?>
             </div>
         <?php endif; ?>
         <?php if (isset($success)): ?>
-            <div class="alert alert-success mb-4">
+            <div class="mb-4 p-3 rounded bg-green-100 text-green-700 border border-green-300">
                 <?php echo htmlspecialchars($success); ?>
             </div>
         <?php endif; ?>
