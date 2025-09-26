@@ -7,6 +7,7 @@ CREATE TABLE users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL UNIQUE,
     role ENUM('client', 'admin') DEFAULT 'client',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,23 +34,33 @@ CREATE TABLE bookings (
     FOREIGN KEY (slot_id) REFERENCES slots(id)
 );
 
-HANDBREAKS);
-
 -- Payments table
 CREATE TABLE payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     booking_id INT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
-    transaction_id VARCHAR(50) NOT NULL,
+    duration_minutes INT,
+    transaction_id VARCHAR(50),
     payment_status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
+    checkout_time DATETIME,
     payment_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (booking_id) REFERENCES bookings(id)
 );
 
+-- Notifications table
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    message VARCHAR(255) NOT NULL,
+    is_read TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 -- Insert sample data for testing
-INSERT INTO users (name, email, password, role) VALUES 
-('Admin User', 'admin@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', 'admin'),
-('Test Client', 'client@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', 'client');
+INSERT INTO users (name, email, password, phone_number, role) VALUES 
+('Admin User', 'admin@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', '0712345678', 'admin'),
+('Test Client', 'client@glee.com', '$2y$10$J9Z8X8gZ3Z8Z8X8gZ3Z8Z8X8Z8X8gZ3Z8X8gZ3Z8', '0722333444', 'client');
 
 INSERT INTO slots (slot_number, proximity, status) VALUES 
 ('A1', 'near_entrance', 'available'),
