@@ -2,6 +2,11 @@
 session_start();
 require_once 'includes/config.php';
 
+// Add M-Pesa API credentials
+$consumerKey = 'z1jc69gjbagg7H9Gox3kfA0cpsQ81PJn0UAz9shlRy4LgCdZ';
+$consumerSecret = 'BjNXOCNVLGM4gY5lRCvkAs6Js3Qu67yBT8cD8bYpKEDl89qPWTvhQifXWYhS1WQl';
+$shortCode = '174379'; // Example sandbox shortcode
+$passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
 try {
     if (!isset($_SESSION['user_id'])) {
         header("Location: index.php");
