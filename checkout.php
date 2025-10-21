@@ -29,6 +29,84 @@ function formatDurationParts(int $minutes): string {
     return implode(', ', $parts);
 }
 
+// === M-Pesa STK Push helpers & credentials ===
+$consumerKey = 'z1jc69gjbagg7H9Gox3kfA0cpsQ81PJn0UAz9shlRy4LgCdZ';
+$consumerSecret = 'BjNXOCNVLGM4gY5lRCvkAs6Js3Qu67yBT8cD8bYpKEDl89qPWTvhQifXWYhS1WQl';
+$shortCode = '174379'; // sandbox shortcode
+$passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
+$mpesa_env = 'sandbox'; // change to 'production' when ready and update endpoints
+
+function getMpesaAccessToken(string $consumerKey, string $consumerSecret, string $env = 'sandbox') {
+    $url = ($env === 'production')
+        ? 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials'
+        : 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_USERPWD, $consumerKey . ':' . $consumerSecret);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
+    $res = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (curl_errno($ch)) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        throw new Exception("cURL error getting access token: $err");
+    }
+    curl_close($ch);
+    if ($code !== 200) {
+        throw new Exception("Failed to obtain M-Pesa access token (HTTP $code): $res");
+    }
+    $json = json_decode($res, true);
+    if (!isset($json['access_token'])) {
+        throw new Exception("Access token not present in response: $res");
+    }
+    return $json['access_token'];
+}
+
+
+function sendStkPush(string $accessToken, string $shortCode, string $passkey, int $amount, string $phone, string $accountRef, string $desc = 'Parking Payment', string $env = 'sandbox') {
+    $timestamp = (new DateTime('now', new DateTimeZone('Africa/Nairobi')))->format('YmdHis');
+    $password = base64_encode($shortCode . $passkey . $timestamp);
+
+    $url = ($env === 'production')
+        ? 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest'
+        : 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
+
+    $payload = [
+        'BusinessShortCode' => $shortCode,
+        'Password' => $password,
+        'Timestamp' => $timestamp,
+        'TransactionType' => 'CustomerPayBillOnline',
+        'Amount' => $amount,
+        'PartyA' => $phone,
+        // 'CallBackURL' omitted for now
+        'AccountReference' => $accountRef,
+        'TransactionDesc' => $desc
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Authorization: Bearer $accessToken",
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    $res = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if (curl_errno($ch)) {
+        $err = curl_error($ch);
+        curl_close($ch);
+        throw new Exception("cURL error sending STK Push: $err");
+    }
+    curl_close($ch);
+    $decoded = json_decode($res, true);
+    if ($decoded === null) {
+        throw new Exception("Invalid JSON response from STK Push: $res (HTTP $code)");
+    }
+    return array_merge(['http_status' => $code], $decoded);
+}
+
 try {
     // Fetch booking + slot + user phone
     $stmt = $conn->prepare("
@@ -79,7 +157,7 @@ try {
         return [$duration_minutes, $amount, $start, $now];
     };
 
-    // Handle "Proceed to Pay" -> record a pending payment
+    // Handle "Proceed to Pay" -> record a pending payment and send STK Push
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['phone_number']) && !isset($_POST['simulate_payment'])) {
         $phone = trim($_POST['phone_number']);
         $phone = preg_replace('/^0/', '254', $phone);
@@ -97,10 +175,33 @@ try {
             } elseif ($existing && $existing['payment_status'] === 'completed') {
                 $success = "Payment already completed for this booking. Use 'Simulate Payment' to re-generate a receipt if needed.";
             } else {
-                $tx = 'TMP_' . uniqid();
-                $insert = $conn->prepare("INSERT INTO payments (booking_id, amount, duration_minutes, transaction_id, payment_status, checkout_time) VALUES (?, ?, ?, ?, 'pending', NOW())");
-                $insert->execute([$booking_id, $amount, $duration_minutes, $tx]);
-                $success = "Payment request recorded. Check your phone for the M-Pesa prompt. For testing you may click 'Simulate Payment'.";
+                try {
+                    // Get access token
+                    $accessToken = getMpesaAccessToken($consumerKey, $consumerSecret, $mpesa_env);
+
+                    // Account reference and description
+                    $accountRef = 'Booking-' . $booking_id;
+                    $desc = 'Parking fee for slot ' . $booking['slot_number'];
+
+                    // Send STK Push
+                    $apiResp = sendStkPush($accessToken, $shortCode, $passkey, (int)$amount, $phone, $accountRef, $desc, $mpesa_env);
+
+                    if (isset($apiResp['ResponseCode']) && $apiResp['ResponseCode'] === '0') {
+                        // success: record pending payment with CheckoutRequestID as transaction_id
+                        $checkoutRequestId = $apiResp['CheckoutRequestID'] ?? null;
+                        $tx = $checkoutRequestId ?: ('MP_' . uniqid());
+                        $insert = $conn->prepare("INSERT INTO payments (booking_id, amount, duration_minutes, transaction_id, payment_status, checkout_time) VALUES (?, ?, ?, ?, 'pending', NOW())");
+                        $insert->execute([$booking_id, $amount, $duration_minutes, $tx]);
+
+                        $success = "Payment prompt sent. Please check your phone and complete the payment.";
+                    } else {
+                        // API returned an error
+                        $respText = isset($apiResp['errorMessage']) ? $apiResp['errorMessage'] : json_encode($apiResp);
+                        $error = "Failed to send payment prompt: " . $respText;
+                    }
+                } catch (Exception $ex) {
+                    $error = "M-Pesa request failed: " . $ex->getMessage();
+                }
             }
         }
     }
@@ -110,8 +211,8 @@ try {
         // Compute amounts
         list($duration_minutes, $amount, $start_dt, $now_dt) = $computeAmountAndDuration($booking['start_time']);
         $transaction_id = 'SIM_' . strtoupper(uniqid());
-        // Generate random checkout code
-        $checkout_code = bin2hex(random_bytes(4));
+        // Generate a 4-digit numeric checkout code (allows leading zeros)
+        $checkout_code = sprintf('%04d', random_int(0, 9999));
 
         try {
             $conn->beginTransaction();
