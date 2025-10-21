@@ -18,6 +18,11 @@ $stmt->execute([$user_id]);
 $user = $stmt->fetch();
 $user_name = $user ? $user['name'] : 'User';
 
+// Set timezone explicitly to avoid mismatches
+$timezone = date_default_timezone_get() ?: 'Africa/Nairobi';
+date_default_timezone_set($timezone);
+
+// Fetch notifications
 $stmt = $conn->prepare("SELECT id, message, is_read, created_at FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY created_at DESC LIMIT 10");
 $stmt->execute([$user_id]);
 $notifications = $stmt->fetchAll();
@@ -48,30 +53,52 @@ if (isset($_POST['book_slot'])) {
     }
 }
 
+// Handle check-in
+if (isset($_POST['check_in'])) {
+    $booking_id = filter_var($_POST['booking_id'], FILTER_SANITIZE_NUMBER_INT);
+
+    try {
+        $stmt = $conn->prepare("SELECT slot_id, status FROM bookings WHERE id = ? AND user_id = ?");
+        $stmt->execute([$booking_id, $user_id]);
+        $booking = $stmt->fetch();
+
+        if (!$booking) {
+            $error = "Invalid booking or not authorized.";
+        } else {
+            if ($booking['status'] !== 'approved') {
+                $error = "Check-in is only allowed for approved bookings.";
+            } else {
+                $check_in_time = date('Y-m-d H:i:s'); // Current timestamp for check-in
+                $stmt = $conn->prepare("UPDATE bookings SET status = 'checked_in', check_in_time = ? WHERE id = ?");
+                $stmt->execute([$check_in_time, $booking_id]);
+                $stmt = $conn->prepare("UPDATE slots SET status = 'occupied' WHERE id = ?");
+                $stmt->execute([$booking['slot_id']]);
+                $success = "Checked in successfully.";
+            }
+        }
+    } catch (PDOException $e) {
+        $error = "Error: " . $e->getMessage();
+        error_log("Check-in error: " . $e->getMessage());
+    }
+}
+
 // Handle booking cancellation
 if (isset($_POST['cancel_booking'])) {
     $booking_id = filter_var($_POST['booking_id'], FILTER_SANITIZE_NUMBER_INT);
-    
+
     try {
-        // Debug log for cancellation attempt
-        error_log("Attempting to cancel booking_id: $booking_id for user_id: $user_id");
         $stmt = $conn->prepare("SELECT slot_id, status FROM bookings WHERE id = ? AND user_id = ? AND status IN ('pending', 'approved')");
         $stmt->execute([$booking_id, $user_id]);
         $booking = $stmt->fetch();
-        error_log("Query result: " . json_encode($booking)); // Log query result
+
         if ($booking) {
-            // Check if the booking is approved
-            if ($booking['status'] === 'approved') {
-                $error = "Cancellation not allowed. Booking is already approved.";
-            } else {
-                $stmt = $conn->prepare("UPDATE bookings SET status = 'completed' WHERE id = ?");
-                $stmt->execute([$booking_id]);
-                $stmt = $conn->prepare("UPDATE slots SET status = 'available' WHERE id = ?");
-                $stmt->execute([$booking['slot_id']]);
-                $success = "Booking cancelled successfully.";
-            }
+            $stmt = $conn->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?");
+            $stmt->execute([$booking_id]);
+            $stmt = $conn->prepare("UPDATE slots SET status = 'available' WHERE id = ?");
+            $stmt->execute([$booking['slot_id']]);
+            $success = "Booking cancelled successfully.";
         } else {
-            $error = "Invalid booking or not authorized.";
+            $error = "Invalid booking, not authorized, or cannot cancel (already checked-in/completed).";
         }
     } catch (PDOException $e) {
         $error = "Error: " . $e->getMessage();
@@ -79,12 +106,12 @@ if (isset($_POST['cancel_booking'])) {
     }
 }
 
+// AJAX endpoint for slots
 if (isset($_GET['get_slots']) && $_GET['get_slots'] === 'true') {
     $stmt = $conn->prepare("SELECT id, slot_number, proximity FROM slots WHERE status = 'available'");
     $stmt->execute();
     $slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if ($slots) {
-        // Return as HTML cards for the grid
         foreach ($slots as $slot) {
             echo '<div class="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition duration-300 transform hover:-translate-y-1">
                     <div class="font-semibold text-gray-900">Slot ' . htmlspecialchars($slot['slot_number']) . '</div>
@@ -97,6 +124,7 @@ if (isset($_GET['get_slots']) && $_GET['get_slots'] === 'true') {
     exit();
 }
 
+// AJAX endpoint for slots select dropdown
 if (isset($_GET['get_slots_select']) && $_GET['get_slots_select'] === 'true') {
     $stmt = $conn->prepare("SELECT id, slot_number, proximity FROM slots WHERE status = 'available'");
     $stmt->execute();
@@ -197,7 +225,7 @@ if (isset($_GET['get_slots_select']) && $_GET['get_slots_select'] === 'true') {
                     <div>
                         <label for="start_time" class="block text-sm font-medium text-gray-700">Start Time</label>
                         <?php
-                            $now = date('Y-m-d\TH:i');
+                            $now = date('Y-m-d\TH:i', strtotime('+1 minute')); // Set min to 1 minute from now
                         ?>
                         <input type="datetime-local" name="start_time" id="start_time" required
                                min="<?php echo $now; ?>"
@@ -216,10 +244,10 @@ if (isset($_GET['get_slots_select']) && $_GET['get_slots_select'] === 'true') {
             <h2 class="text-xl font-semibold mb-4 text-gray-900">My Bookings</h2>
             <div class="bg-white p-6 rounded-lg shadow-md overflow-x-auto">
                 <?php
-                $stmt = $conn->prepare("SELECT b.id, b.start_time, b.status, s.slot_number, s.proximity 
+                $stmt = $conn->prepare("SELECT b.id, b.start_time, b.status, b.check_in_time, s.slot_number, s.proximity, b.slot_id 
                                        FROM bookings b 
                                        JOIN slots s ON b.slot_id = s.id 
-                                       WHERE b.user_id = ? AND b.status IN ('pending', 'approved')");
+                                       WHERE b.user_id = ? AND b.status IN ('pending', 'approved', 'checked_in')");
                 $stmt->execute([$user_id]);
                 $bookings = $stmt->fetchAll();
                 if ($bookings) {
@@ -232,21 +260,39 @@ if (isset($_GET['get_slots_select']) && $_GET['get_slots_select'] === 'true') {
                             <th class="p-3 text-left font-semibold">Actions</th>
                           </tr></thead><tbody>';
                     foreach ($bookings as $booking) {
+                        $can_cancel = in_array($booking['status'], ['pending', 'approved']);
+                        $can_checkin = ($booking['status'] === 'approved');
+                        $can_checkout = ($booking['status'] === 'checked_in');
+
                         echo '<tr class="border-t">
                                 <td class="p-3" data-label="Slot">' . htmlspecialchars($booking['slot_number']) . '</td>
                                 <td class="p-3" data-label="Proximity">' . htmlspecialchars($booking['proximity']) . '</td>
                                 <td class="p-3" data-label="Start Time">' . htmlspecialchars($booking['start_time']) . '</td>
                                 <td class="p-3" data-label="Status">' . htmlspecialchars($booking['status']) . '</td>
                                 <td class="p-3" data-label="Actions">';
-                        if ($booking['status'] === 'pending') {
-                            echo '<form method="POST" class="inline">
-                                    <input type="hidden" name="booking_id" value="' . $booking['id'] . '">
+
+                        // Cancel for pending or approved
+                        if ($can_cancel) {
+                            echo '<form method="POST" class="inline" onsubmit="return confirm(\'Are you sure you want to cancel this booking?\');">
+                                    <input type="hidden" name="booking_id" value="' . htmlspecialchars($booking['id']) . '">
                                     <button type="submit" name="cancel_booking" class="text-red-600 hover:text-red-800 transition duration-300">Cancel</button>
                                   </form>';
                         }
-                        echo '<a href="checkout.php?booking_id=' . $booking['id'] . '" class="text-green-600 hover:text-green-800 ml-3 transition duration-300">Check Out</a>
-                              </td>
-                              </tr>';
+
+                        // Approved -> show Check In
+                        if ($can_checkin) {
+                            echo '<form method="POST" class="inline ml-3">
+                                    <input type="hidden" name="booking_id" value="' . htmlspecialchars($booking['id']) . '">
+                                    <button type="submit" name="check_in" class="text-blue-600 hover:text-blue-800 transition duration-300">Check In</button>
+                                  </form>';
+                        }
+
+                        // After checked-in: show Check Out link
+                        if ($can_checkout) {
+                            echo '<a href="checkout.php?booking_id=' . urlencode($booking['id']) . '" class="text-green-600 hover:text-green-800 ml-3 transition duration-300">Check Out</a>';
+                        }
+
+                        echo '</td></tr>';
                     }
                     echo '</tbody></table>';
                 } else {

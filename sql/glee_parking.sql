@@ -17,34 +17,40 @@ CREATE TABLE slots (
     id INT AUTO_INCREMENT PRIMARY KEY,
     slot_number VARCHAR(10) NOT NULL UNIQUE,
     proximity ENUM('near_entrance', 'standard') DEFAULT 'standard',
-    status ENUM('available', 'booked', 'disabled') DEFAULT 'available',
+    status ENUM('available', 'booked', 'occupied', 'disabled') DEFAULT 'available',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Bookings table
+-- Bookings table (updated)
 CREATE TABLE bookings (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     slot_id INT NOT NULL,
     start_time DATETIME NOT NULL,
+    check_in_time DATETIME NULL,
     end_time DATETIME,
-    status ENUM('pending', 'approved', 'rejected', 'completed') DEFAULT 'pending',
+    cancelled_at DATETIME NULL,
+    status ENUM('pending','approved','checked_in','completed','cancelled','rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (slot_id) REFERENCES slots(id)
+    FOREIGN KEY (slot_id) REFERENCES slots(id),
+    INDEX (status)
 );
 
--- Payments table
+-- Payments table (updated)
 CREATE TABLE payments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     booking_id INT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
+    payment_method ENUM('mpesa','cash','card') DEFAULT 'mpesa',
     duration_minutes INT,
-    transaction_id VARCHAR(50),
-    payment_status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
+    transaction_id VARCHAR(100),
+    payer_phone VARCHAR(20),
+    payment_status ENUM('pending','completed','failed') DEFAULT 'pending',
     checkout_time DATETIME,
     payment_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (booking_id) REFERENCES bookings(id)
+    FOREIGN KEY (booking_id) REFERENCES bookings(id),
+    INDEX (booking_id)
 );
 
 -- Notifications table
