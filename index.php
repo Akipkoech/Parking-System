@@ -4,10 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Glee Hotel Parking — Secure, Convenient Parking</title>
+    
+    <!-- SEO Meta Tags -->
     <meta name="description" content="Reserve a parking slot at Glee Hotel. Secure, monitored and affordable parking with instant booking and contactless check-in.">
+    <meta name="keywords" content="parking, hotel parking, secure parking, Glee Hotel, car park, parking reservation">
+    <meta name="author" content="Glee Hotel">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://gleehotel.com/parking/">
+    <meta property="og:title" content="Glee Hotel Parking — Secure, Convenient Parking">
+    <meta property="og:description" content="Reserve a parking slot at Glee Hotel. Secure, monitored and affordable parking with instant booking.">
+    <meta property="og:image" content="assets/images/parking-hero.jpg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://gleehotel.com/parking/">
+    <meta property="twitter:title" content="Glee Hotel Parking — Secure, Convenient Parking">
+    <meta property="twitter:description" content="Reserve a parking slot at Glee Hotel. Secure, monitored and affordable parking with instant booking.">
+    <meta property="twitter:image" content="assets/images/parking-hero.jpg">
+
+    <!-- Favicon -->
+    <link rel="icon" href="assets/images/logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/images/logo.png">
+
+    <!-- Theme Color for Mobile Browsers -->
+    <meta name="theme-color" content="#166534">
+
     <!-- Tailwind Play CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="icon" href="assets/images/logo.png" type="image/png">
 </head>
 <body class="antialiased text-gray-800 bg-gray-100 font-sans">
     <header class="bg-gradient-to-r from-green-800 to-green-600 text-white fixed top-0 w-full z-50 shadow-md">

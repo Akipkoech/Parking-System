@@ -63,8 +63,29 @@ function getMpesaAccessToken(string $consumerKey, string $consumerSecret, string
     return $json['access_token'];
 }
 
+function formatPhoneNumber(string $phone): string {
+    // Remove any spaces or special characters
+    $phone = preg_replace('/[^0-9]/', '', $phone);
+    
+    // Convert to international format if needed
+    if (strlen($phone) === 9 && substr($phone, 0, 1) === '7') {
+        $phone = '254' . $phone;
+    } else if (strlen($phone) === 10 && substr($phone, 0, 1) === '0') {
+        $phone = '254' . substr($phone, 1);
+    }
+    
+    return $phone;
+}
 
 function sendStkPush(string $accessToken, string $shortCode, string $passkey, int $amount, string $phone, string $accountRef, string $desc = 'Parking Payment', string $env = 'sandbox') {
+    // Format phone number
+    $phone = formatPhoneNumber($phone);
+    
+    // Validate phone number format
+    if (!preg_match('/^254[17][0-9]{8}$/', $phone)) {
+        throw new Exception('Invalid phone number format. Must be 254XXXXXXXXX');
+    }
+
     $timestamp = (new DateTime('now', new DateTimeZone('Africa/Nairobi')))->format('YmdHis');
     $password = base64_encode($shortCode . $passkey . $timestamp);
 
@@ -79,7 +100,9 @@ function sendStkPush(string $accessToken, string $shortCode, string $passkey, in
         'TransactionType' => 'CustomerPayBillOnline',
         'Amount' => $amount,
         'PartyA' => $phone,
-        // 'CallBackURL' omitted for now
+        'PartyB' => $shortCode,
+        'PhoneNumber' => $phone,
+        'CallBackURL' => 'https://webhook.site/3cbb0855-b626-40ce-8152-1ea09316c5fe',  // Dummy callback URL
         'AccountReference' => $accountRef,
         'TransactionDesc' => $desc
     ];
@@ -143,15 +166,27 @@ try {
         $now = new DateTime('now', new DateTimeZone('Africa/Nairobi'));
         $duration_seconds = $now->getTimestamp() - $start->getTimestamp();
         $duration_minutes = max(1, (int) round($duration_seconds / 60));
-        $hours = $duration_minutes / 60.0;
-
-        // Simple tiered pricing
-        if ($hours <= 5) {
-            $amount = 60;
-        } elseif ($hours <= 6) {
-            $amount = 150;
+        
+        // Calculate hours, rounding up partial hours
+        $hours = ceil($duration_minutes / 60);
+        
+        // Pricing structure:
+        // First hour (or part thereof): KES 100
+        // Each additional hour (or part thereof): KES 50
+        // Maximum daily rate: KES 500
+        
+        if ($hours <= 24) {
+            // For stays up to 24 hours
+            $amount = 60; // First hour base rate
+            if ($hours > 1) {
+                $amount += ($hours - 1) * 50; // Additional hours
+            }
+            // Cap at daily maximum
+            $amount = min($amount, 500);
         } else {
-            $amount = 150 + (max(0, ceil($hours - 6)) * 100);
+            // For stays longer than 24 hours
+            $days = ceil($hours / 24);
+            $amount = $days * 500; // Daily rate applied
         }
 
         return [$duration_minutes, $amount, $start, $now];
